@@ -1,65 +1,178 @@
-import Image from "next/image";
+﻿"use client";
 
-export default function Home() {
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import "leaflet/dist/leaflet.css";
+
+const MapContainer = dynamic(
+  () => import("react-leaflet").then((m) => m.MapContainer),
+  { ssr: false }
+);
+const TileLayer = dynamic(
+  () => import("react-leaflet").then((m) => m.TileLayer),
+  { ssr: false }
+);
+const Marker = dynamic(
+  () => import("react-leaflet").then((m) => m.Marker),
+  { ssr: false }
+);
+const Popup = dynamic(
+  () => import("react-leaflet").then((m) => m.Popup),
+  { ssr: false }
+);
+
+type Tipo = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+};
+
+type InterestPoint = {
+  objectId: string;
+  name: string;
+  description?: string;
+  lat: number;
+  lon: number;
+  type?: Tipo;
+  neighborhood?: string | null;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+
+export default function HomePage() {
+  const [pontos, setPontos] = useState<InterestPoint[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+
+  // Carregar os pontos ao abrir a Home
+  useEffect(() => {
+    async function carregar() {
+      if (!API_BASE) {
+        setErro("NEXT_PUBLIC_API_URL não configurada.");
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${API_BASE}/api/interest-points`);
+        if (!resp.ok) throw new Error(`Erro: HTTP ${resp.status}`);
+
+        const data = await resp.json();
+        const normalizados = data
+          .map((p: any) => {
+            const lat = typeof p.lat === "string" ? parseFloat(p.lat) : p.lat;
+            const lon = typeof p.lon === "string" ? parseFloat(p.lon) : p.lon;
+            if (!isFinite(lat) || !isFinite(lon)) return null;
+            return { ...p, lat, lon };
+          })
+          .filter(Boolean);
+
+        setPontos(normalizados);
+      } catch (e: any) {
+        setErro(e.message || "Erro ao carregar pontos");
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const center: [number, number] = [-30.885, -55.51];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-zinc-950 text-zinc-50">
+      {/* HEADER */}
+      <header className="border-b border-zinc-800 bg-zinc-900/40 backdrop-blur p-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <h1 className="text-lg font-semibold tracking-tight">
+            Uncovering History · Historiador
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+
+          <Link
+            href="/pontos/novo"
+            className="rounded-full border border-emerald-400 bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-black shadow hover:bg-emerald-400 transition"
+          >
+            + Cadastrar novo ponto
+          </Link>
+        </div>
+      </header>
+
+      {/* MAPA GRANDE NA HOME */}
+      <section className="h-[60vh] w-full border-b border-zinc-800">
+        <MapContainer
+          center={center}
+          zoom={15}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          {/* Marcadores */}
+          {pontos.map((p) => (
+            <Marker key={p.objectId} position={[p.lat, p.lon]}>
+              <Popup>
+                <strong>{p.name}</strong>
+                {p.type && <div className="mt-1 text-xs">{p.type.name}</div>}
+                {p.neighborhood && (
+                  <div className="text-xs text-zinc-400">
+                    Bairro: {p.neighborhood}
+                  </div>
+                )}
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+      </section>
+
+      {/* CONTEÚDO */}
+      <section className="mx-auto max-w-6xl px-4 py-8">
+        <h2 className="text-xl font-semibold tracking-tight mb-4">
+          Últimos pontos cadastrados
+        </h2>
+
+        {erro && (
+          <p className="text-red-400 text-sm mb-4">
+            Erro ao carregar pontos: {erro}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        )}
+
+        {pontos.length === 0 ? (
+          <p className="text-zinc-400 text-sm">
+            Nenhum ponto cadastrado ainda.
+          </p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {pontos.slice(-6).map((p) => (
+              <Link
+                key={p.objectId}
+                href={`/pontos/${p.objectId}`}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 hover:border-emerald-400 transition"
+              >
+                <h3 className="text-lg font-medium">{p.name}</h3>
+                {p.type && (
+                  <p className="text-xs text-emerald-300">{p.type.name}</p>
+                )}
+                {p.neighborhood && (
+                  <p className="text-xs text-zinc-500">
+                    Bairro: {p.neighborhood}
+                  </p>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* Link para explorar tudo */}
+        <div className="mt-6">
+          <Link
+            href="/pontos"
+            className="text-emerald-400 text-sm underline hover:text-emerald-300"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Ver todos os pontos cadastrados →
+          </Link>
         </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }

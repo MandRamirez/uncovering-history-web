@@ -6,6 +6,32 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import "leaflet/dist/leaflet.css";
 
+// ==== Leaflet só no client + ícone personalizado ====
+let L: any = null;
+let pinIcon: any = null;
+
+if (typeof window !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  L = require("leaflet");
+
+  // (opcional) corrige ícones padrão do Leaflet
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: "/leaflet/marker-icon-2x.png",
+    iconUrl: "/leaflet/marker-icon.png",
+    shadowUrl: "/leaflet/marker-shadow.png",
+  });
+
+  // 👉 nosso PIN personalizado
+  pinIcon = L.icon({
+    iconUrl: "/pin.svg",
+    iconRetinaUrl: "/pin.svg",
+    iconSize: [40, 40],   // tamanho do pin
+    iconAnchor: [20, 40], // ponta do pin encostando no mapa
+    popupAnchor: [0, -40],
+  });
+}
+
 // React-Leaflet dinâmico
 const MapContainer = dynamic(
   () => import("react-leaflet").then((m) => m.MapContainer),
@@ -139,7 +165,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* MAPA COM PINS (sem cluster, para garantir que apareçam) */}
+      {/* MAPA COM PINS */}
       <section className="h-[60vh] w-full border-b border-zinc-800">
         {loading ? (
           <div className="flex h-full items-center justify-center text-sm text-zinc-200">
@@ -164,6 +190,7 @@ export default function HomePage() {
               <Marker
                 key={p.objectId}
                 position={[p.lat, p.lon]}
+                icon={pinIcon} // 👈 usa nosso pin
               >
                 <Popup>
                   <strong>{p.name}</strong>

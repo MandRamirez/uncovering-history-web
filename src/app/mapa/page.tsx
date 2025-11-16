@@ -5,20 +5,6 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import "leaflet/dist/leaflet.css";
 
-// ==== Leaflet (só no client) para corrigir ícones padrão ====
-let L: any = null;
-if (typeof window !== "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  L = require("leaflet");
-
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "/leaflet/marker-icon-2x.png",
-    iconUrl: "/leaflet/marker-icon.png",
-    shadowUrl: "/leaflet/marker-shadow.png",
-  });
-}
-
 // ==== React-Leaflet dinâmico ====
 const MapContainer = dynamic(
   () => import("react-leaflet").then((m) => m.MapContainer),
@@ -63,6 +49,10 @@ export default function MapaPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 👇 ícone do pin carregado dinamicamente no client
+  const [pinIcon, setPinIcon] = useState<any | null>(null);
+
+  // Carrega pontos da API
   useEffect(() => {
     async function carregar() {
       if (!API_BASE) {
@@ -99,6 +89,25 @@ export default function MapaPage() {
     carregar();
   }, []);
 
+  // Carrega Leaflet e cria o ícone personalizado só no client
+  useEffect(() => {
+    async function loadIcon() {
+      const L = await import("leaflet");
+
+      const icon = L.icon({
+        iconUrl: "/pin.svg",
+        iconRetinaUrl: "/pin.svg",
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40],
+      });
+
+      setPinIcon(icon);
+    }
+
+    loadIcon();
+  }, []);
+
   const defaultCenter: [number, number] = [-30.885, -55.51];
 
   const center: [number, number] = useMemo(() => {
@@ -110,7 +119,7 @@ export default function MapaPage() {
     return [lat, lon];
   }, [pontos]);
 
-  if (loading) {
+  if (loading || !pinIcon) {
     return (
       <main className="min-h-screen bg-black px-6 py-8 text-zinc-50">
         Carregando mapa...
@@ -140,7 +149,11 @@ export default function MapaPage() {
           />
 
           {pontos.map((p) => (
-            <Marker key={p.objectId} position={[p.lat, p.lon]}>
+            <Marker
+              key={p.objectId}
+              position={[p.lat, p.lon]}
+              icon={pinIcon} // 👈 usa o pin carregado via useEffect
+            >
               <Popup>
                 <strong>{p.name}</strong>
                 {p.photoUrls && p.photoUrls.length > 0 && (

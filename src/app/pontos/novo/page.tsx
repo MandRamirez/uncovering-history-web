@@ -74,6 +74,9 @@ export default function NovoPontoPage() {
   const [saving, setSaving] = useState(false);
   const [erroSave, setErroSave] = useState<string | null>(null);
 
+  // 👇 Ícone do pin (carregado só no client)
+  const [pinIcon, setPinIcon] = useState<any | null>(null);
+
   useEffect(() => {
     async function carregar() {
       if (!API_BASE) {
@@ -98,6 +101,25 @@ export default function NovoPontoPage() {
     }
 
     carregar();
+  }, []);
+
+  // Carrega Leaflet e cria o ícone personalizado
+  useEffect(() => {
+    async function loadIcon() {
+      const L = await import("leaflet");
+
+      const icon = L.icon({
+        iconUrl: "/pin.svg",
+        iconRetinaUrl: "/pin.svg",
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40],
+      });
+
+      setPinIcon(icon);
+    }
+
+    loadIcon();
   }, []);
 
   const tipos = useMemo(() => {
@@ -293,18 +315,21 @@ export default function NovoPontoPage() {
 
               <MapaClickHandler onSelect={updateLatLon} />
 
-              {latNum !== null && lonNum !== null && (
-                <Marker
-                  position={[latNum, lonNum]}
-                  draggable={true}
-                  eventHandlers={{
-                    dragend: (e: any) => {
-                      const pos = e.target.getLatLng();
-                      updateLatLon(pos.lat, pos.lng);
-                    },
-                  }}
-                />
-              )}
+              {latNum !== null &&
+                lonNum !== null &&
+                pinIcon && (
+                  <Marker
+                    position={[latNum, lonNum]}
+                    draggable={true}
+                    icon={pinIcon} // 👈 agora usa o pin
+                    eventHandlers={{
+                      dragend: (e: any) => {
+                        const pos = e.target.getLatLng();
+                        updateLatLon(pos.lat, pos.lng);
+                      },
+                    }}
+                  />
+                )}
             </MapContainer>
           </div>
         </section>

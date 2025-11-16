@@ -1,13 +1,25 @@
 ﻿// src/app/mapa/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 import "leaflet/dist/leaflet.css";
 
-// ===============================
-//   Imports dinâmicos (client-only)
-// ===============================
+// ==== Leaflet (só no client) para corrigir ícones padrão ====
+let L: any = null;
+if (typeof window !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  L = require("leaflet");
+
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: "/leaflet/marker-icon-2x.png",
+    iconUrl: "/leaflet/marker-icon.png",
+    shadowUrl: "/leaflet/marker-shadow.png",
+  });
+}
+
+// ==== React-Leaflet dinâmico ====
 const MapContainer = dynamic(
   () => import("react-leaflet").then((m) => m.MapContainer),
   { ssr: false }
@@ -25,9 +37,6 @@ const Popup = dynamic(
   { ssr: false }
 );
 
-// ===============================
-//   Tipos
-// ===============================
 type Tipo = {
   id: string;
   name: string;
@@ -35,28 +44,16 @@ type Tipo = {
   color: string;
 };
 
-// Versão que vem da API (pode vir string ou number)
-type InterestPointApi = {
-  objectId: string;
-  name: string;
-  description?: string;
-  lat: number | string;
-  lon: number | string;
-  address?: string | null;
-  neighborhood?: string | null;
-  type?: Tipo;
-};
-
-// Versão normalizada que o mapa realmente usa
-export type InterestPoint = {
+type InterestPoint = {
   objectId: string;
   name: string;
   description?: string;
   lat: number;
   lon: number;
-  address?: string | null;
-  neighborhood?: string | null;
   type?: Tipo;
+  neighborhood?: string | null;
+  address?: string | null;
+  photoUrls?: string[];
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
@@ -69,42 +66,30 @@ export default function MapaPage() {
   useEffect(() => {
     async function carregar() {
       if (!API_BASE) {
-        setErro("NEXT_PUBLIC_API_URL não está configurada.");
+        setErro("NEXT_PUBLIC_API_URL não configurada.");
         setLoading(false);
         return;
       }
 
       try {
         const resp = await fetch(`${API_BASE}/api/interest-points`);
-        if (!resp.ok) {
-          throw new Error(`Erro HTTP ${resp.status}`);
-        }
+        if (!resp.ok) throw new Error(`Erro HTTP ${resp.status}`);
 
-        const raw: InterestPointApi[] = await resp.json();
-
-        // Normaliza lat/lon para sempre serem numbers
-        const data: InterestPoint[] = raw
-          .map((p) => {
+        const data = await resp.json();
+        const normalizados: InterestPoint[] = data
+          .map((p: any) => {
             const lat =
               typeof p.lat === "string" ? parseFloat(p.lat) : p.lat;
             const lon =
               typeof p.lon === "string" ? parseFloat(p.lon) : p.lon;
-
-            if (!isFinite(lat) || !isFinite(lon)) {
-              return null;
-            }
-
-            return {
-              ...p,
-              lat,
-              lon,
-            };
+            if (!isFinite(lat) || !isFinite(lon)) return null;
+            return { ...p, lat, lon };
           })
-          .filter((p): p is InterestPoint => p !== null);
+          .filter((p: any): p is InterestPoint => p !== null);
 
-        setPontos(data);
+        setPontos(normalizados);
       } catch (e: any) {
-        console.error("Erro ao carregar pontos:", e);
+        console.error(e);
         setErro(e.message || "Erro ao carregar pontos");
       } finally {
         setLoading(false);
@@ -114,16 +99,20 @@ export default function MapaPage() {
     carregar();
   }, []);
 
+  const defaultCenter: [number, number] = [-30.885, -55.51];
+
+  const center: [number, number] = useMemo(() => {
+    if (!pontos.length) return defaultCenter;
+    const lat =
+      pontos.reduce((sum, p) => sum + p.lat, 0) / pontos.length;
+    const lon =
+      pontos.reduce((sum, p) => sum + p.lon, 0) / pontos.length;
+    return [lat, lon];
+  }, [pontos]);
+
   if (loading) {
     return (
-      <main
-        style={{
-          padding: 24,
-          background: "black",
-          color: "white",
-          minHeight: "100vh",
-        }}
-      >
+      <main className="min-h-screen bg-black px-6 py-8 text-zinc-50">
         Carregando mapa...
       </main>
     );
@@ -131,100 +120,61 @@ export default function MapaPage() {
 
   if (erro) {
     return (
-      <main
-        style={{
-          padding: 24,
-          background: "black",
-          color: "red",
-          minHeight: "100vh",
-        }}
-      >
+      <main className="min-h-screen bg-black px-6 py-8 text-red-400">
         Erro: {erro}
       </main>
     );
   }
 
-  // Centro padrão: Santana do Livramento
-  const defaultCenter: [number, number] = [-30.885, -55.51];
-
-  // Se houver pontos, usamos a média das coordenadas como centro
-  const center: [number, number] =
-    pontos.length > 0
-      ? [
-          pontos.reduce((sum, p) => sum + p.lat, 0) / pontos.length,
-          pontos.reduce((sum, p) => sum + p.lon, 0) / pontos.length,
-        ]
-      : defaultCenter;
-
   return (
-    <main style={{ height: "100vh", width: "100vw" }}>
-      <MapContainer
-        center={center}
-        zoom={15}
-        style={{ height: "100%", width: "100%" }}
-      >
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+    <main className="min-h-screen bg-zinc-950 text-zinc-50">
+      <section className="h-screen w-full">
+        <MapContainer
+          center={center}
+          zoom={15}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
 
-        {/* === Agrupamento de pontos no mesmo local === */}
-        {(() => {
-          const groups = new Map<string, InterestPoint[]>();
-
-          // Agrupa pontos por lat/lon aproximado (5 casas decimais)
-          pontos.forEach((p) => {
-            const key = `${p.lat.toFixed(5)}|${p.lon.toFixed(5)}`;
-            const arr = groups.get(key) ?? [];
-            arr.push(p);
-            groups.set(key, arr);
-          });
-
-          return Array.from(groups.entries()).map(([key, group]) => {
-            const [latStr, lonStr] = key.split("|");
-            const lat = parseFloat(latStr);
-            const lon = parseFloat(lonStr);
-
-            return (
-              <Marker key={key} position={[lat, lon]}>
-                <Popup>
-                  {group.length === 1 ? (
-                    <>
-                      <strong>{group[0].name}</strong>
-                      {group[0].type && (
-                        <div>Tipo: {group[0].type!.name}</div>
-                      )}
-                      {group[0].description && (
-                        <div style={{ marginTop: 4 }}>
-                          {group[0].description}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <strong>{group.length} pontos neste local:</strong>
-                      <ul
-                        style={{
-                          marginTop: 4,
-                          paddingLeft: 16,
-                          listStyle: "disc",
-                        }}
-                      >
-                        {group.map((p) => (
-                          <li key={p.objectId}>
-                            {p.name}
-                            {p.type ? ` (${p.type.name})` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </Popup>
-              </Marker>
-            );
-          });
-        })()}
-      </MapContainer>
+          {pontos.map((p) => (
+            <Marker key={p.objectId} position={[p.lat, p.lon]}>
+              <Popup>
+                <strong>{p.name}</strong>
+                {p.photoUrls && p.photoUrls.length > 0 && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.photoUrls[0]}
+                    alt={p.name}
+                    style={{
+                      marginTop: 8,
+                      width: 160,
+                      height: 90,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                    }}
+                  />
+                )}
+                {p.type && (
+                  <div className="mt-1 text-xs">{p.type.name}</div>
+                )}
+                {p.neighborhood && (
+                  <div className="text-[11px] text-zinc-500">
+                    Bairro: {p.neighborhood}
+                  </div>
+                )}
+                {p.address && (
+                  <div className="text-[11px] text-zinc-500">
+                    {p.address}
+                  </div>
+                )}
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+      </section>
     </main>
   );
 }

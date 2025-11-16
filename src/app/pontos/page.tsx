@@ -1,7 +1,10 @@
-﻿"use client";
+﻿// src/app/pontos/page.tsx
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import PIItemCard, { InterestPoint as CardPoint } from "./components/PIItemCard";
+import PIItemCard, {
+  InterestPoint as CardPoint,
+} from "./components/PIItemCard";
 import PIFilterBar from "./components/PIFilterBar";
 
 type Tipo = {
@@ -36,7 +39,7 @@ export default function PontosPage() {
   useEffect(() => {
     async function carregar() {
       if (!API_BASE) {
-        setErro("NEXT_PUBLIC_API_URL não está configurada.");
+        setErro("NEXT_PUBLIC_API_URL nao está configurada.");
         setLoading(false);
         return;
       }
@@ -80,6 +83,7 @@ export default function PontosPage() {
     carregar();
   }, []);
 
+  // lista de tipos únicos
   const tipos = useMemo(() => {
     const map = new Map<string, string>();
     data.forEach((p) => {
@@ -90,6 +94,7 @@ export default function PontosPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [data]);
 
+  // lista de bairros únicos
   const bairros = useMemo(() => {
     const set = new Set<string>();
     data.forEach((p) => {
@@ -100,6 +105,7 @@ export default function PontosPage() {
     return Array.from(set.values()).sort();
   }, [data]);
 
+  // aplica filtros
   const filtrados = useMemo(() => {
     return data.filter((p) => {
       if (
@@ -166,7 +172,9 @@ export default function PontosPage() {
               Nenhum ponto encontrado com os filtros atuais.
             </p>
           ) : (
-            filtrados.map((p) => <PIItemCard key={p.objectId} point={p} />)
+            filtrados.map((p) => (
+              <PIItemCard key={p.objectId} point={p} />
+            ))
           )}
         </section>
       </div>

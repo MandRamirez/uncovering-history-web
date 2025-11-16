@@ -3,6 +3,22 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+
+const MapContainer = dynamic(
+  () => import("react-leaflet").then((m) => m.MapContainer),
+  { ssr: false }
+);
+const TileLayer = dynamic(
+  () => import("react-leaflet").then((m) => m.TileLayer),
+  { ssr: false }
+);
+const Marker = dynamic(
+  () => import("react-leaflet").then((m) => m.Marker),
+  { ssr: false }
+);
 
 type Tipo = {
   id: string;
@@ -24,10 +40,23 @@ type InterestPointApi = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
+function MapaClickHandler({
+  onSelect,
+}: {
+  onSelect: (lat: number, lon: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      const { lat, lng } = e.latlng;
+      onSelect(lat, lng);
+    },
+  });
+  return null;
+}
+
 export default function NovoPontoPage() {
   const router = useRouter();
 
-  // campos do formulário
   const [name, setName] = useState("");
   const [typeId, setTypeId] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
@@ -36,12 +65,12 @@ export default function NovoPontoPage() {
   const [lon, setLon] = useState<string>("");
   const [description, setDescription] = useState("");
 
-  // dados auxiliares vindos da API (para popular selects)
-  const [existingPoints, setExistingPoints] = useState<InterestPointApi[]>([]);
+  const [existingPoints, setExistingPoints] = useState<InterestPointApi[]>(
+    []
+  );
   const [loadingInit, setLoadingInit] = useState(true);
   const [erroInit, setErroInit] = useState<string | null>(null);
 
-  // estado de envio
   const [saving, setSaving] = useState(false);
   const [erroSave, setErroSave] = useState<string | null>(null);
 
@@ -71,7 +100,6 @@ export default function NovoPontoPage() {
     carregar();
   }, []);
 
-  // extrai tipos únicos a partir dos pontos já existentes
   const tipos = useMemo(() => {
     const map = new Map<string, string>();
     existingPoints.forEach((p) => {
@@ -82,7 +110,6 @@ export default function NovoPontoPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [existingPoints]);
 
-  // bairros auxiliares (podes usar para sugerir / reaproveitar)
   const bairros = useMemo(() => {
     const set = new Set<string>();
     existingPoints.forEach((p) => {
@@ -93,14 +120,31 @@ export default function NovoPontoPage() {
     return Array.from(set.values()).sort();
   }, [existingPoints]);
 
-  function validar(): string | null {
-    if (!name.trim()) return "O nome do ponto é obrigatório.";
-    if (!lat.trim() || !lon.trim()) return "Latitude e longitude são obrigatórias.";
+  function getLatLonNums() {
+    if (!lat.trim() || !lon.trim()) return { latNum: null, lonNum: null };
     const latNum = Number(lat.replace(",", "."));
     const lonNum = Number(lon.replace(",", "."));
     if (!isFinite(latNum) || !isFinite(lonNum)) {
+      return { latNum: null, lonNum: null };
+    }
+    return { latNum, lonNum };
+  }
+
+  function updateLatLon(newLat: number, newLon: number) {
+    setLat(String(newLat));
+    setLon(String(newLon));
+  }
+
+  function validar(): string | null {
+    if (!name.trim()) return "O nome do ponto é obrigatório.";
+    if (!lat.trim() || !lon.trim())
+      return "Latitude e longitude são obrigatórias.";
+
+    const { latNum, lonNum } = getLatLonNums();
+    if (latNum === null || lonNum === null) {
       return "Coordenadas inválidas. Use números (ex: -30.885, -55.510).";
     }
+
     return null;
   }
 
@@ -119,8 +163,11 @@ export default function NovoPontoPage() {
       return;
     }
 
-    const latNum = Number(lat.replace(",", "."));
-    const lonNum = Number(lon.replace(",", "."));
+    const { latNum, lonNum } = getLatLonNums();
+    if (latNum === null || lonNum === null) {
+      setErroSave("Coordenadas inválidas.");
+      return;
+    }
 
     const payload = {
       name: name.trim(),
@@ -129,8 +176,8 @@ export default function NovoPontoPage() {
       lon: lonNum,
       address: address.trim() || null,
       neighborhood: neighborhood.trim() || null,
-      typeId: typeId || null, // assumindo que a API aceita typeId
-      parentId: null, // por enquanto cadastro sempre como ponto "raiz"
+      typeId: typeId || null,
+      parentId: null,
     };
 
     try {
@@ -151,7 +198,6 @@ export default function NovoPontoPage() {
         );
       }
 
-      // se API retornar o ponto criado, pode extrair o id
       let createdId: string | null = null;
       try {
         const body = await resp.json();
@@ -159,10 +205,9 @@ export default function NovoPontoPage() {
           createdId = body.objectId as string;
         }
       } catch {
-        // ignore JSON errors – maybe API returns empty body
+        // se a API não devolver JSON, tudo bem
       }
 
-      // redireciona para detalhe (se tivermos id) ou para a lista
       if (createdId) {
         router.push(`/pontos/${createdId}`);
       } else {
@@ -185,8 +230,7 @@ export default function NovoPontoPage() {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLat(String(pos.coords.latitude));
-        setLon(String(pos.coords.longitude));
+        updateLatLon(pos.coords.latitude, pos.coords.longitude);
       },
       (err) => {
         console.error(err);
@@ -198,9 +242,16 @@ export default function NovoPontoPage() {
     );
   }
 
+  const { latNum, lonNum } = getLatLonNums();
+  const defaultCenter: [number, number] = [-30.885, -55.51];
+  const mapCenter: [number, number] =
+    latNum !== null && lonNum !== null
+      ? [latNum, lonNum]
+      : defaultCenter;
+
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-50">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="mx-auto flex max-w-4xl flex-col gap-4">
         <header className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">
             Uncovering History · Cadastro
@@ -209,9 +260,8 @@ export default function NovoPontoPage() {
             Cadastrar novo ponto de interesse
           </h1>
           <p className="text-xs text-zinc-400">
-            Esta tela é usada pelo historiador para registrar novos locais
-            no banco de dados. Preencha as informações básicas e confirme
-            as coordenadas.
+            Clique no mapa para definir o local, ajuste o marcador se
+            necessário e preencha os dados históricos.
           </p>
         </header>
 
@@ -221,11 +271,49 @@ export default function NovoPontoPage() {
           </p>
         )}
 
+        {/* MAPA INTERATIVO */}
+        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
+          <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-400">
+            <span>Mapa de localização do ponto</span>
+            <span>
+              Clique no mapa para posicionar • Arraste o marcador para
+              ajustar
+            </span>
+          </div>
+          <div className="h-[320px] w-full">
+            <MapContainer
+              center={mapCenter}
+              zoom={15}
+              style={{ height: "100%", width: "100%" }}
+            >
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+
+              <MapaClickHandler onSelect={updateLatLon} />
+
+              {latNum !== null && lonNum !== null && (
+                <Marker
+                  position={[latNum, lonNum]}
+                  draggable={true}
+                  eventHandlers={{
+                    dragend: (e: any) => {
+                      const pos = e.target.getLatLng();
+                      updateLatLon(pos.lat, pos.lng);
+                    },
+                  }}
+                />
+              )}
+            </MapContainer>
+          </div>
+        </section>
+
+        {/* FORMULÁRIO */}
         <form
           onSubmit={handleSubmit}
           className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4"
         >
-          {/* Nome */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-200">
               Nome do ponto *
@@ -238,7 +326,6 @@ export default function NovoPontoPage() {
             />
           </div>
 
-          {/* Tipo + Bairro */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-200">
@@ -258,8 +345,8 @@ export default function NovoPontoPage() {
               </select>
               {tipos.length === 0 && !loadingInit && (
                 <p className="text-[11px] text-zinc-500">
-                  Nenhum tipo detectado ainda. Cadastre alguns pontos ou
-                  configure tipos na API.
+                  Nenhum tipo detectado ainda. Cadastre pontos ou configure
+                  tipos na API.
                 </p>
               )}
             </div>
@@ -283,7 +370,6 @@ export default function NovoPontoPage() {
             </div>
           </div>
 
-          {/* Endereço */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-200">
               Endereço
@@ -296,7 +382,6 @@ export default function NovoPontoPage() {
             />
           </div>
 
-          {/* Coordenadas */}
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-200">
@@ -326,14 +411,13 @@ export default function NovoPontoPage() {
               <button
                 type="button"
                 onClick={usarMinhaLocalizacao}
-                className="w-full rounded-xl border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-medium text-black shadow-sm transition hover:bg-emerald-500 hover:shadow-md"
+                className="w-full rounded-xl border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-black shadow-sm transition hover:bg-emerald-500 hover:shadow-md"
               >
                 Usar minha localização
               </button>
             </div>
           </div>
 
-          {/* Descrição */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-200">
               Descrição / contexto histórico
@@ -352,7 +436,7 @@ export default function NovoPontoPage() {
             </p>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="submit"
               disabled={saving}

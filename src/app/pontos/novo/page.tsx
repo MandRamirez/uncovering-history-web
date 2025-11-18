@@ -25,6 +25,7 @@ type Tipo = {
   name: string;
   icon: string;
   color: string;
+  // se o backend tiver mais campos, eles são ignorados sem problema
 };
 
 type InterestPointApi = {
@@ -35,7 +36,8 @@ type InterestPointApi = {
   lon: number | string;
   address?: string | null;
   neighborhood?: string | null;
-  type?: Tipo;
+  country?: string | null;
+  type?: Tipo | string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
@@ -61,24 +63,33 @@ export default function NovoPontoPage() {
   const [typeId, setTypeId] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
   const [address, setAddress] = useState("");
+  const [country, setCountry] = useState("");
+  const [contact, setContact] = useState("");
   const [lat, setLat] = useState<string>("");
   const [lon, setLon] = useState<string>("");
   const [description, setDescription] = useState("");
 
-  const [existingPoints, setExistingPoints] = useState<InterestPointApi[]>(
-    []
-  );
+  const [existingPoints, setExistingPoints] = useState<InterestPointApi[]>([]);
+  const [tipos, setTipos] = useState<Tipo[]>([]); // 👈 vem de /api/types
+
   const [loadingInit, setLoadingInit] = useState(true);
   const [erroInit, setErroInit] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [erroSave, setErroSave] = useState<string | null>(null);
 
-  // 👇 Ícone do pin (carregado só no client)
+  // Ícone do pin (carregado só no client)
   const [pinIcon, setPinIcon] = useState<any | null>(null);
 
+  // loading para detecção automática de país
+  const [autoCountryLoading, setAutoCountryLoading] = useState(false);
+
+  // flag para saber se o usuário mexeu no campo de país
+  const [countryTouched, setCountryTouched] = useState(false);
+
+  // Carregar pontos existentes (para sugerir bairros)
   useEffect(() => {
-    async function carregar() {
+    async function carregarPontos() {
       if (!API_BASE) {
         setErroInit("NEXT_PUBLIC_API_URL não está configurada.");
         setLoadingInit(false);
@@ -100,7 +111,28 @@ export default function NovoPontoPage() {
       }
     }
 
-    carregar();
+    carregarPontos();
+  }, []);
+
+  // Carregar tipos a partir de /api/types
+  useEffect(() => {
+    async function carregarTipos() {
+      if (!API_BASE) return;
+
+      try {
+        const resp = await fetch(`${API_BASE}/api/types`);
+        if (!resp.ok) {
+          throw new Error(`Erro ao carregar tipos (HTTP ${resp.status})`);
+        }
+        const data: Tipo[] = await resp.json();
+        setTipos(data);
+      } catch (e) {
+        console.error(e);
+        // se quiser, dá pra ligar isso num erro visual depois
+      }
+    }
+
+    carregarTipos();
   }, []);
 
   // Carrega Leaflet e cria o ícone personalizado
@@ -122,16 +154,7 @@ export default function NovoPontoPage() {
     loadIcon();
   }, []);
 
-  const tipos = useMemo(() => {
-    const map = new Map<string, string>();
-    existingPoints.forEach((p) => {
-      if (p.type) {
-        map.set(p.type.id, p.type.name);
-      }
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [existingPoints]);
-
+  // Bairros sugeridos
   const bairros = useMemo(() => {
     const set = new Set<string>();
     existingPoints.forEach((p) => {
@@ -156,6 +179,42 @@ export default function NovoPontoPage() {
     setLat(String(newLat));
     setLon(String(newLon));
   }
+
+  // Detectar país automaticamente quando lat/lon mudarem
+  useEffect(() => {
+    async function detectarPais() {
+      const { latNum, lonNum } = getLatLonNums();
+      if (latNum === null || lonNum === null) return;
+
+      // se o usuário já digitou manualmente, não sobrescreve
+      if (countryTouched) return;
+
+      try {
+        setAutoCountryLoading(true);
+
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latNum}&lon=${lonNum}&accept-language=pt-BR`;
+
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          console.warn("Falha ao detectar país", resp.status);
+          return;
+        }
+
+        const data: any = await resp.json();
+        const countryName: string | undefined = data?.address?.country;
+
+        if (countryName) {
+          setCountry(countryName);
+        }
+      } catch (e) {
+        console.error("Erro ao detectar país:", e);
+      } finally {
+        setAutoCountryLoading(false);
+      }
+    }
+
+    detectarPais();
+  }, [lat, lon, countryTouched]); // 👈 roda quando coords mudam OU quando o usuário "libera" o campo
 
   function validar(): string | null {
     if (!name.trim()) return "O nome do ponto é obrigatório.";
@@ -198,8 +257,11 @@ export default function NovoPontoPage() {
       lon: lonNum,
       address: address.trim() || null,
       neighborhood: neighborhood.trim() || null,
+      country: country.trim() || null,
+      contact: contact.trim() || null,
       typeId: typeId || null,
       parentId: null,
+      customFields: {},
     };
 
     try {
@@ -215,9 +277,7 @@ export default function NovoPontoPage() {
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
-        throw new Error(
-          text || `Erro ao salvar ponto (HTTP ${resp.status})`
-        );
+        throw new Error(text || `Erro ao salvar ponto (HTTP ${resp.status})`);
       }
 
       let createdId: string | null = null;
@@ -267,9 +327,7 @@ export default function NovoPontoPage() {
   const { latNum, lonNum } = getLatLonNums();
   const defaultCenter: [number, number] = [-30.885, -55.51];
   const mapCenter: [number, number] =
-    latNum !== null && lonNum !== null
-      ? [latNum, lonNum]
-      : defaultCenter;
+    latNum !== null && lonNum !== null ? [latNum, lonNum] : defaultCenter;
 
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-50">
@@ -282,8 +340,8 @@ export default function NovoPontoPage() {
             Cadastrar novo ponto de interesse
           </h1>
           <p className="text-xs text-zinc-400">
-            Clique no mapa para definir o local, ajuste o marcador se
-            necessário e preencha os dados históricos.
+            Clique no mapa para definir o local, ajuste o marcador se necessário
+            e preencha os dados históricos.
           </p>
         </header>
 
@@ -298,8 +356,7 @@ export default function NovoPontoPage() {
           <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-400">
             <span>Mapa de localização do ponto</span>
             <span>
-              Clique no mapa para posicionar • Arraste o marcador para
-              ajustar
+              Clique no mapa para posicionar • Arraste o marcador para ajustar
             </span>
           </div>
           <div className="h-[320px] w-full">
@@ -309,27 +366,25 @@ export default function NovoPontoPage() {
               style={{ height: "100%", width: "100%" }}
             >
               <TileLayer
-                attribution='&copy; OpenStreetMap contributors'
+                attribution="&copy; OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
               <MapaClickHandler onSelect={updateLatLon} />
 
-              {latNum !== null &&
-                lonNum !== null &&
-                pinIcon && (
-                  <Marker
-                    position={[latNum, lonNum]}
-                    draggable={true}
-                    icon={pinIcon} // 👈 agora usa o pin
-                    eventHandlers={{
-                      dragend: (e: any) => {
-                        const pos = e.target.getLatLng();
-                        updateLatLon(pos.lat, pos.lng);
-                      },
-                    }}
-                  />
-                )}
+              {latNum !== null && lonNum !== null && pinIcon && (
+                <Marker
+                  position={[latNum, lonNum]}
+                  draggable={true}
+                  icon={pinIcon}
+                  eventHandlers={{
+                    dragend: (e: any) => {
+                      const pos = e.target.getLatLng();
+                      updateLatLon(pos.lat, pos.lng);
+                    },
+                  }}
+                />
+              )}
             </MapContainer>
           </div>
         </section>
@@ -353,33 +408,34 @@ export default function NovoPontoPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-200">
-                Tipo
-              </label>
+              <label className="text-xs font-medium text-zinc-200">Tipo</label>
               <select
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-400"
                 value={typeId}
                 onChange={(e) => setTypeId(e.target.value)}
               >
-                <option value="">Selecione um tipo (opcional)</option>
-                {tipos.map((t) => (
-                  <option key={t.id} value={t.id}>
+                <option key="placeholder" value="">
+                  Selecione um tipo (opcional)
+                </option>
+
+                {tipos.map((t, idx) => (
+                  <option
+                    key={t.id ?? `tipo-${idx}`} // sempre tem uma key
+                    value={t.id ?? t.name}
+                  >
                     {t.name}
                   </option>
                 ))}
               </select>
               {tipos.length === 0 && !loadingInit && (
                 <p className="text-[11px] text-zinc-500">
-                  Nenhum tipo detectado ainda. Cadastre pontos ou configure
-                  tipos na API.
+                  Nenhum tipo carregado da API ainda.
                 </p>
               )}
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-200">
-                Bairro
-              </label>
+              <label className="text-xs font-medium text-zinc-200">Bairro</label>
               <input
                 list="bairros-list"
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-400"
@@ -395,6 +451,27 @@ export default function NovoPontoPage() {
             </div>
           </div>
 
+          {/* País */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-zinc-200">
+              País{" "}
+              {autoCountryLoading && (
+                <span className="text-[10px] text-zinc-400">
+                  (detectando...)
+                </span>
+              )}
+            </label>
+            <input
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-400"
+              value={country}
+              onChange={(e) => {
+                setCountry(e.target.value);
+                setCountryTouched(true); // 👈 marca que o usuário mexeu
+              }}
+              placeholder="Ex: Brasil, Uruguay..."
+            />
+          </div>
+
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-200">
               Endereço
@@ -404,6 +481,19 @@ export default function NovoPontoPage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Rua / Praça, número..."
+            />
+          </div>
+
+          {/* Contato */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-zinc-200">
+              Contato (e-mail ou telefone)
+            </label>
+            <input
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-400"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="Ex: contato@exemplo.org"
             />
           </div>
 

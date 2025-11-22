@@ -38,14 +38,9 @@ export default function PontosPage() {
 
   useEffect(() => {
     async function carregar() {
-      if (!API_BASE) {
-        setErro("NEXT_PUBLIC_API_URL nao está configurada.");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const resp = await fetch(`${API_BASE}/api/interest-points`);
+        // Use the Next.js API route instead of calling backend directly
+        const resp = await fetch('/api/interest-points');
         if (!resp.ok) {
           throw new Error(`Erro HTTP ${resp.status}`);
         }

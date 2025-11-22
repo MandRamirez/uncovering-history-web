@@ -55,14 +55,9 @@ export default function MapaPage() {
   // Carrega pontos da API
   useEffect(() => {
     async function carregar() {
-      if (!API_BASE) {
-        setErro("NEXT_PUBLIC_API_URL não configurada.");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const resp = await fetch(`${API_BASE}/api/interest-points`);
+        // Use Next.js API proxy instead of calling backend directly
+        const resp = await fetch('/api/interest-points');
         if (!resp.ok) throw new Error(`Erro HTTP ${resp.status}`);
 
         const data = await resp.json();

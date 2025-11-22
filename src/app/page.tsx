@@ -1,334 +1,292 @@
-﻿// src/app/page.tsx
+// src/app/page.tsx
 "use client";
 
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import "leaflet/dist/leaflet.css";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 
-// ==== Leaflet só no client + ícone personalizado ====
-let L: any = null;
-let pinIcon: any = null;
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showRegister, setShowRegister] = useState(false);
 
-if (typeof window !== "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  L = require("leaflet");
-
-  // corrige ícones padrão do Leaflet
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "/leaflet/marker-icon-2x.png",
-    iconUrl: "/leaflet/marker-icon.png",
-    shadowUrl: "/leaflet/marker-shadow.png",
-  });
-
-  // nosso PIN personalizado
-  pinIcon = L.icon({
-    iconUrl: "/pin.svg",
-    iconRetinaUrl: "/pin.svg",
-    iconSize: [40, 40],
-    iconAnchor: [20, 40],
-    popupAnchor: [0, -40],
-  });
-}
-
-// React-Leaflet dinâmico
-const MapContainer = dynamic(
-  () => import("react-leaflet").then((m) => m.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import("react-leaflet").then((m) => m.TileLayer),
-  { ssr: false }
-);
-const Marker = dynamic(
-  () => import("react-leaflet").then((m) => m.Marker),
-  { ssr: false }
-);
-const Popup = dynamic(
-  () => import("react-leaflet").then((m) => m.Popup),
-  { ssr: false }
-);
-
-type Tipo = {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-};
-
-type InterestPoint = {
-  objectId: string;
-  name: string;
-  description?: string;
-  lat: number;
-  lon: number;
-  type?: Tipo;
-  neighborhood?: string | null;
-  address?: string | null;
-  photoUrls?: string[]; // pode ficar para o futuro
-  photoIds?: string[];  // aqui estão as imagens dos seeds e dos uploads
-};
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
-
-// 👇 Helper centralizado pra descobrir qual imagem usar
-function getPointImageUrl(p: InterestPoint): string | undefined {
-  // 1) se um dia usarmos photoUrls, elas têm prioridade
-  if (p.photoUrls && p.photoUrls.length > 0) {
-    const url = p.photoUrls[0];
-    if (!url) return undefined;
-    
-    // Se for URL completa (Unsplash), usa direto
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      return url;
-    }
-    
-    // Se for caminho relativo, adiciona o prefixo /api/files/
-    return `/api/files/${url}`;
-  }
-
-  // 2) photoIds:
-  if (p.photoIds && p.photoIds.length > 0) {
-    const first = p.photoIds[0];
-    if (!first) return undefined;
-
-    // caso dos seeds: URLs completas do Unsplash
-    if (first.startsWith("http://") || first.startsWith("https://")) {
-      return first;
-    }
-
-    // caso dos uploads na API: caminho relativo "parentId/filename.jpg"
-    // Use the Next.js API proxy instead of calling backend directly
-    return `/api/files/${first}`;
-  }
-
-  return undefined;
-}
-
-export default function HomePage() {
-  const [pontos, setPontos] = useState<InterestPoint[]>([]);
-  const [erro, setErro] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  // Redirigir si ya está logueado
   useEffect(() => {
-    async function carregar() {
-      try {
-        // Use the Next.js API route instead of calling backend directly
-        const resp = await fetch('/api/interest-points');
-
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => "");
-          throw new Error(text || `Erro HTTP ${resp.status}`);
-        }
-
-        const data = await resp.json();
-        const normalizados: InterestPoint[] = data
-          .map((p: any) => {
-            const lat =
-              typeof p.lat === "string" ? parseFloat(p.lat) : p.lat;
-            const lon =
-              typeof p.lon === "string" ? parseFloat(p.lon) : p.lon;
-            if (!isFinite(lat) || !isFinite(lon)) return null;
-            return { ...p, lat, lon } as InterestPoint;
-          })
-          .filter((p: any): p is InterestPoint => p !== null);
-
-        setPontos(normalizados);
-      } catch (e: any) {
-        console.error(e);
-        setErro(e.message || "Erro ao carregar pontos");
-      } finally {
-        setLoading(false);
+    if (typeof window !== "undefined") {
+      const isLogged = localStorage.getItem("uh_logged_in");
+      if (isLogged === "true") {
+        router.push("/dashboard");
       }
     }
+  }, [router]);
 
-    carregar();
-  }, []);
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    
+    // Validación simple
+    if (!email.trim() || !senha.trim()) {
+      setError("Por favor, preencha email e senha");
+      return;
+    }
 
-  const defaultCenter: [number, number] = [-30.885, -55.51];
+    setLoading(true);
 
-  const center: [number, number] = useMemo(() => {
-    if (!pontos.length) return defaultCenter;
-    const lat =
-      pontos.reduce((sum, p) => sum + p.lat, 0) / pontos.length;
-    const lon =
-      pontos.reduce((sum, p) => sum + p.lon, 0) / pontos.length;
-    return [lat, lon];
-  }, [pontos]);
+    try {
+      // Usar el API endpoint proxy de Next.js
+      const response = await fetch('/api/auth', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          password: senha,
+        }),
+      });
 
-  const ultimos = useMemo(
-    () => [...pontos].slice(-6).reverse(),
-    [pontos]
-  );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Credenciais inválidas");
+      }
+
+      // Guardar token si viene en la respuesta
+      if (data.token) {
+        localStorage.setItem("uh_auth_token", data.token);
+      }
+
+      // Guardar estado de login
+      localStorage.setItem("uh_logged_in", "true");
+      localStorage.setItem("uh_user_email", email);
+
+      // Redirigir al dashboard
+      router.push("/dashboard");
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    
+    if (!email.trim() || !senha.trim()) {
+      setError("Por favor, preencha email e senha");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          password: senha,
+          name: "User",
+          surname: "Test"
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao criar usuário");
+      }
+
+      // Después de registrar, intentar hacer login automáticamente
+      await handleSubmit(e);
+      
+    } catch (err: any) {
+      console.error("Register error:", err);
+      setError(err.message || "Erro ao criar usuário.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para usar el token existente (TEMPORAL - para testing)
+  const useExistingToken = () => {
+    const existingToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    if (existingToken) {
+      localStorage.setItem("uh_auth_token", existingToken);
+      localStorage.setItem("uh_logged_in", "true");
+      localStorage.setItem("uh_user_email", "test2@uncovering.local");
+      router.push("/dashboard");
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-50">
-      {/* HEADER */}
-      <header className="border-b border-zinc-800 bg-zinc-900/40 backdrop-blur p-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">
-              Uncovering History
-            </p>
-            <h1 className="text-lg font-semibold tracking-tight">
-              Painel do Historiador
-            </h1>
+    <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center p-4">
+      {/* Card de Login */}
+      <div className="w-full max-w-md">
+        {/* Logo/Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-sky-500 mb-4 shadow-lg shadow-emerald-500/20">
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-zinc-50 tracking-tight">
+            Uncovering History
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            {showRegister ? "Criar nova conta" : "Faça login para acessar o painel"}
+          </p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-zinc-900/50 backdrop-blur-xl rounded-2xl border border-zinc-800 shadow-2xl p-8">
+          <form onSubmit={showRegister ? handleRegister : handleSubmit} className="space-y-5">
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-sm text-red-400">
+                {error}
+              </div>
+            )}
+
+            {/* Email */}
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-zinc-300 mb-2"
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seu@email.com"
+                className="w-full px-4 py-3 bg-zinc-950/50 border border-zinc-700 rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                disabled={loading}
+                autoComplete="username"
+              />
+            </div>
+
+            {/* Senha */}
+            <div>
+              <label
+                htmlFor="senha"
+                className="block text-sm font-medium text-zinc-300 mb-2"
+              >
+                Senha
+              </label>
+              <input
+                id="senha"
+                type="password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-zinc-950/50 border border-zinc-700 rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                disabled={loading}
+                autoComplete={showRegister ? "new-password" : "current-password"}
+              />
+            </div>
+
+            {/* Botón de submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg
+                    className="animate-spin h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  {showRegister ? "Criando conta..." : "Entrando..."}
+                </span>
+              ) : (
+                showRegister ? "Criar Conta" : "Entrar"
+              )}
+            </button>
+          </form>
+
+          {/* Toggle entre Login y Registro */}
+          <div className="mt-6 pt-6 border-t border-zinc-800 text-center">
+            <button
+              onClick={() => {
+                setShowRegister(!showRegister);
+                setError("");
+              }}
+              className="text-sm text-emerald-400 hover:text-emerald-300 transition"
+            >
+              {showRegister 
+                ? "← Voltar para o login" 
+                : "Não tem conta? Criar nova conta →"}
+            </button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/pontos"
-              className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-1.5 text-xs font-medium text-zinc-100 hover:border-zinc-500"
-            >
-              Ver lista de pontos
-            </Link>
-            <Link
-              href="/mapa"
-              className="rounded-full border border-sky-400 bg-sky-500 px-4 py-1.5 text-xs font-semibold text-black shadow hover:bg-sky-400"
-            >
-              Abrir mapa em tela cheia
-            </Link>
-            <Link
-              href="/pontos/novo"
-              className="rounded-full border border-emerald-400 bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-black shadow hover:bg-emerald-400"
-            >
-              + Cadastrar novo ponto
-            </Link>
+          {/* Footer del card */}
+          <div className="mt-4 pt-4 border-t border-zinc-800">
+            <p className="text-xs text-center text-zinc-500">
+              Sistema de gestão de pontos históricos
+            </p>
           </div>
         </div>
-      </header>
 
-      {/* MAPA COM PINS */}
-      <section className="h-[60vh] w-full border-b border-zinc-800">
-        {loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-zinc-200">
-            Carregando mapa e pontos de interesse...
-          </div>
-        ) : erro ? (
-          <div className="flex h-full items-center justify-center text-sm text-red-400">
-            Erro ao carregar pontos: {erro}
-          </div>
-        ) : (
-          <MapContainer
-            center={center}
-            zoom={15}
-            style={{ height: "100%", width: "100%" }}
-          >
-            <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-
-            {pontos.map((p) => {
-              const imgUrl = getPointImageUrl(p);
-              return (
-                <Marker
-                  key={p.objectId}
-                  position={[p.lat, p.lon]}
-                  icon={pinIcon}
-                >
-                  <Popup>
-                    <strong>{p.name}</strong>
-                    {imgUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={imgUrl}
-                        alt={p.name}
-                        style={{
-                          marginTop: 8,
-                          width: 160,
-                          height: 90,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                        }}
-                      />
-                    )}
-                    {p.type && (
-                      <div className="mt-1 text-xs">{p.type.name}</div>
-                    )}
-                    {p.neighborhood && (
-                      <div className="text-[11px] text-zinc-500">
-                        Bairro: {p.neighborhood}
-                      </div>
-                    )}
-                    {p.address && (
-                      <div className="text-[11px] text-zinc-500">
-                        {p.address}
-                      </div>
-                    )}
-                  </Popup>
-                </Marker>
-              );
-            })}
-          </MapContainer>
-        )}
-      </section>
-
-      {/* ÚLTIMOS PONTOS */}
-      <section className="mx-auto max-w-6xl px-4 py-8">
-        <header className="mb-4 flex items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">
-              Últimos pontos cadastrados
-            </h2>
-            <p className="text-[11px] text-zinc-500">
-              Total: {pontos.length} • Mostrando: {ultimos.length}
+        {/* Acceso temporal para desarrollo */}
+        <div className="mt-4 text-center space-y-2">
+          <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4">
+            <p className="text-xs text-amber-400 mb-2">
+              🔧 <strong>Modo de Desenvolvimento</strong>
             </p>
+            <p className="text-xs text-zinc-400 mb-3">
+              Mientras el backend no tenga usuarios, use o acesso direto:
+            </p>
+            <button
+              onClick={useExistingToken}
+              className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition"
+            >
+              Entrar com Token Existente
+            </button>
           </div>
-          <Link
-            href="/pontos"
-            className="text-[11px] text-emerald-300 hover:text-emerald-200"
-          >
-            Ver todos →
-          </Link>
-        </header>
-
-        {ultimos.length === 0 ? (
-          <p className="text-sm text-zinc-400">
-            Nenhum ponto cadastrado ainda.
-          </p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {ultimos.map((p) => {
-              const imgUrl = getPointImageUrl(p);
-
-              return (
-                <Link
-                  key={p.objectId}
-                  href={`/pontos/${p.objectId}`}
-                  className="group overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40 transition hover:border-emerald-400/70"
-                >
-                  {imgUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={imgUrl}
-                      alt={p.name}
-                      className="h-32 w-full object-cover transition group-hover:scale-105"
-                    />
-                  )}
-                  <div className="p-3 space-y-1">
-                    <h3 className="text-sm font-semibold">{p.name}</h3>
-                    {p.type && (
-                      <p className="text-[11px] text-emerald-300">
-                        {p.type.name}
-                      </p>
-                    )}
-                    {p.neighborhood && (
-                      <p className="text-[11px] text-zinc-500">
-                        Bairro: {p.neighborhood}
-                      </p>
-                    )}
-                    <p className="text-[11px] text-zinc-600">
-                      Lat/Lon: {p.lat.toFixed(4)}, {p.lon.toFixed(4)}
-                    </p>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        </div>
+      </div>
     </main>
   );
 }

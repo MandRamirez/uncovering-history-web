@@ -8,6 +8,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [name, setName] = useState("");
+  const [surname, setSurname] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showRegister, setShowRegister] = useState(false);
@@ -35,6 +37,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      console.log('🔄 Attempting login...');
+      
       // Usar el API endpoint proxy de Next.js
       const response = await fetch('/api/auth', {
         method: "POST",
@@ -42,30 +46,35 @@ export default function LoginPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email,
+          email: email.trim(),
           password: senha,
         }),
       });
 
+      console.log('📥 Login response status:', response.status);
+
       const data = await response.json();
+      console.log('📥 Login response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || "Credenciais inválidas");
       }
 
-      // Guardar token si viene en la respuesta
+      console.log('✅ Login successful!');
+
+      // Guardar token que viene en la respuesta
       if (data.token) {
         localStorage.setItem("uh_auth_token", data.token);
       }
 
       // Guardar estado de login
       localStorage.setItem("uh_logged_in", "true");
-      localStorage.setItem("uh_user_email", email);
+      localStorage.setItem("uh_user_email", data.email || email);
 
       // Redirigir al dashboard
       router.push("/dashboard");
     } catch (err: any) {
-      console.error("Login error:", err);
+      console.error("❌ Login error:", err);
       setError(err.message || "Erro ao fazer login. Verifique suas credenciais.");
     } finally {
       setLoading(false);
@@ -76,52 +85,59 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     
-    if (!email.trim() || !senha.trim()) {
-      setError("Por favor, preencha email e senha");
+    if (!email.trim() || !senha.trim() || !name.trim() || !surname.trim()) {
+      setError("Por favor, preencha todos os campos");
       return;
     }
 
     setLoading(true);
 
     try {
+      console.log('🔄 Attempting registration...');
+      
       const response = await fetch('/api/auth/register', {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email,
+          name: name.trim(),
+          surname: surname.trim(),
+          email: email.trim(),
           password: senha,
-          name: "User",
-          surname: "Test"
         }),
       });
 
+      console.log('📥 Register response status:', response.status);
+      
       const data = await response.json();
+      console.log('📥 Register response data:', data);
 
       if (!response.ok) {
-        throw new Error(data.error || "Erro ao criar usuário");
+        if (response.status === 409) {
+          throw new Error("Este email já está cadastrado");
+        }
+        throw new Error(data.error || data.details || "Erro ao criar usuário");
       }
 
-      // Después de registrar, intentar hacer login automáticamente
-      await handleSubmit(e);
+      console.log('✅ Registration successful!');
+
+      // El backend devuelve email + token directamente
+      if (data.token) {
+        localStorage.setItem("uh_auth_token", data.token);
+      }
+
+      localStorage.setItem("uh_logged_in", "true");
+      localStorage.setItem("uh_user_email", data.email || email);
+
+      // Redirigir al dashboard
+      router.push("/dashboard");
       
     } catch (err: any) {
-      console.error("Register error:", err);
+      console.error("❌ Register error:", err);
       setError(err.message || "Erro ao criar usuário.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Función para usar el token existente (TEMPORAL - para testing)
-  const useExistingToken = () => {
-    const existingToken = process.env.NEXT_PUBLIC_API_TOKEN;
-    if (existingToken) {
-      localStorage.setItem("uh_auth_token", existingToken);
-      localStorage.setItem("uh_logged_in", "true");
-      localStorage.setItem("uh_user_email", "test2@uncovering.local");
-      router.push("/dashboard");
     }
   };
 
@@ -162,12 +178,53 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-zinc-900/50 backdrop-blur-xl rounded-2xl border border-zinc-800 shadow-2xl p-8">
-          <form onSubmit={showRegister ? handleRegister : handleSubmit} className="space-y-5">
+          <form onSubmit={showRegister ? handleRegister : handleSubmit} className="space-y-4">
             {/* Error Message */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-sm text-red-400">
                 {error}
               </div>
+            )}
+
+            {/* Campos de Name y Surname (solo en registro) */}
+            {showRegister && (
+              <>
+                <div>
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-zinc-300 mb-2"
+                  >
+                    Nome
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Seu nome"
+                    className="w-full px-4 py-3 bg-zinc-950/50 border border-zinc-700 rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                    disabled={loading}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="surname"
+                    className="block text-sm font-medium text-zinc-300 mb-2"
+                  >
+                    Sobrenome
+                  </label>
+                  <input
+                    id="surname"
+                    type="text"
+                    value={surname}
+                    onChange={(e) => setSurname(e.target.value)}
+                    placeholder="Seu sobrenome"
+                    className="w-full px-4 py-3 bg-zinc-950/50 border border-zinc-700 rounded-xl text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                    disabled={loading}
+                  />
+                </div>
+              </>
             )}
 
             {/* Email */}
@@ -256,7 +313,7 @@ export default function LoginPage() {
               className="text-sm text-emerald-400 hover:text-emerald-300 transition"
             >
               {showRegister 
-                ? "← Voltar para o login" 
+                ? "← Já tem conta? Fazer login" 
                 : "Não tem conta? Criar nova conta →"}
             </button>
           </div>
@@ -269,22 +326,13 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Acceso temporal para desarrollo */}
-        <div className="mt-4 text-center space-y-2">
-          <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4">
-            <p className="text-xs text-amber-400 mb-2">
-              🔧 <strong>Modo de Desenvolvimento</strong>
-            </p>
-            <p className="text-xs text-zinc-400 mb-3">
-              Mientras el backend no tenga usuarios, use o acesso direto:
-            </p>
-            <button
-              onClick={useExistingToken}
-              className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition"
-            >
-              Entrar com Token Existente
-            </button>
-          </div>
+        {/* Info adicional */}
+        <div className="mt-4 text-center">
+          <p className="text-xs text-zinc-600">
+            {showRegister 
+              ? "Ao criar uma conta, você poderá gerenciar pontos históricos"
+              : "💡 Use suas credenciais para acessar o sistema"}
+          </p>
         </div>
       </div>
     </main>

@@ -21,15 +21,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Intentar autenticación con el backend
+    // Llamar al endpoint de login del backend
     const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        username: email,
-        password: password,
+        email,
+        password,
       }),
     });
 
@@ -45,12 +45,8 @@ export async function POST(request: Request) {
 
     const data = await response.json();
     
-    // Retornar el token si existe
-    return NextResponse.json({
-      success: true,
-      token: data.token || data.accessToken || data.jwt,
-      user: data.user || { email }
-    });
+    // Retornar la respuesta del backend (email + token)
+    return NextResponse.json(data);
 
   } catch (error: any) {
     console.error('Login error:', error);

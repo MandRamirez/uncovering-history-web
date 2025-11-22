@@ -1,7 +1,7 @@
-// src/app/pontos/novo/page.tsx
+// src/app/pontos/[id]/editar/page.tsx
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useMapEvents } from "react-leaflet";
@@ -36,7 +36,22 @@ type InterestPointApi = {
   address?: string | null;
   neighborhood?: string | null;
   country?: string | null;
+  contact?: string | null;
   type?: Tipo | string;
+  typeId?: string;
+  parentId?: string | null;
+  customFields?: Record<string, any> | null;
+  quimica?: string[] | null;
+  biologica?: string[] | null;
+  arte?: string[] | null;
+  historica?: string[] | null;
+  status?: string[] | null;
+};
+
+type PageProps = {
+  params: Promise<{
+    id: string;
+  }>;
 };
 
 function MapaClickHandler({
@@ -53,7 +68,8 @@ function MapaClickHandler({
   return null;
 }
 
-export default function NovoPontoPage() {
+export default function EditarPontoPage({ params }: PageProps) {
+  const { id } = use(params);
   const router = useRouter();
 
   // Campos básicos
@@ -92,9 +108,58 @@ export default function NovoPontoPage() {
   const [erroSave, setErroSave] = useState<string | null>(null);
 
   const [pinIcon, setPinIcon] = useState<any | null>(null);
-  const [autoCountryLoading, setAutoCountryLoading] = useState(false);
-  const [countryTouched, setCountryTouched] = useState(false);
   const [imageFiles, setImageFiles] = useState<FileList | null>(null);
+
+  // Carregar ponto existente para edição
+  useEffect(() => {
+    async function carregarPonto() {
+      try {
+        const resp = await fetch(`/api/interest-points/${id}`);
+        if (!resp.ok) throw new Error(`Erro HTTP ${resp.status}`);
+        const ponto: InterestPointApi = await resp.json();
+
+        // Preencher formulário com dados existentes
+        setName(ponto.name || "");
+        setDescription(ponto.description || "");
+        setNeighborhood(ponto.neighborhood || "");
+        setAddress(ponto.address || "");
+        setCountry(ponto.country || "");
+        setContact(ponto.contact || "");
+
+        // Coordenadas
+        const latVal = typeof ponto.lat === "string" ? ponto.lat : String(ponto.lat);
+        const lonVal = typeof ponto.lon === "string" ? ponto.lon : String(ponto.lon);
+        setLat(latVal);
+        setLon(lonVal);
+
+        // Tipo
+        if (typeof ponto.type === "object" && ponto.type?.id) {
+          setTypeId(ponto.type.id);
+        } else if (ponto.typeId) {
+          setTypeId(ponto.typeId);
+        }
+
+        // Parent
+        setParentId(ponto.parentId || "");
+
+        // Campos categóricos
+        setQuimica(ponto.quimica || []);
+        setBiologica(ponto.biologica || []);
+        setArte(ponto.arte || []);
+        setHistorica(ponto.historica || []);
+        setStatus(ponto.status || []);
+
+        // Custom fields
+        setCustomFields(ponto.customFields || {});
+
+      } catch (e: any) {
+        console.error(e);
+        setErroInit(e.message || "Erro ao carregar ponto de interesse");
+      }
+    }
+
+    carregarPonto();
+  }, [id]);
 
   // Carregar pontos existentes
   useEffect(() => {
@@ -103,16 +168,16 @@ export default function NovoPontoPage() {
         const resp = await fetch('/api/interest-points');
         if (!resp.ok) throw new Error(`Erro HTTP ${resp.status}`);
         const raw: InterestPointApi[] = await resp.json();
-        setExistingPoints(raw);
+        // Filtrar o ponto atual para não aparecer na lista de pontos pais
+        setExistingPoints(raw.filter(p => p.objectId !== id));
       } catch (e: any) {
         console.error(e);
-        setErroInit(e.message || "Erro ao carregar pontos existentes");
       } finally {
         setLoadingInit(false);
       }
     }
     carregarPontos();
-  }, []);
+  }, [id]);
 
   // Carregar tipos
   useEffect(() => {
@@ -167,33 +232,6 @@ export default function NovoPontoPage() {
     setLat(String(newLat));
     setLon(String(newLon));
   }
-
-  // Detectar país automaticamente
-  useEffect(() => {
-    async function detectarPais() {
-      const { latNum, lonNum } = getLatLonNums();
-      if (latNum === null || lonNum === null) return;
-      if (countryTouched) return;
-
-      try {
-        setAutoCountryLoading(true);
-        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latNum}&lon=${lonNum}&accept-language=pt-BR`;
-        const resp = await fetch(url);
-        if (!resp.ok) {
-          console.warn("Falha ao detectar país", resp.status);
-          return;
-        }
-        const data: any = await resp.json();
-        const countryName: string | undefined = data?.address?.country;
-        if (countryName) setCountry(countryName);
-      } catch (e) {
-        console.error("Erro ao detectar país:", e);
-      } finally {
-        setAutoCountryLoading(false);
-      }
-    }
-    detectarPais();
-  }, [lat, lon, countryTouched]);
 
   function validar(): string | null {
     if (!name.trim()) return "O nome do ponto é obrigatório.";
@@ -268,34 +306,24 @@ export default function NovoPontoPage() {
     try {
       setSaving(true);
 
-      const resp = await fetch('/api/interest-points', {
-        method: "POST",
+      const resp = await fetch(`/api/interest-points/${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
-        throw new Error(text || `Erro ao salvar ponto (HTTP ${resp.status})`);
+        throw new Error(text || `Erro ao atualizar ponto (HTTP ${resp.status})`);
       }
 
-      let createdId: string | null = null;
-      try {
-        const body = await resp.json();
-        if (body && body.objectId) {
-          createdId = body.objectId as string;
-        }
-      } catch {
-        // OK se não retornar JSON
-      }
-
-      // Upload de imagens
-      if (createdId && imageFiles && imageFiles.length > 0) {
+      // Upload de novas imagens (se houver)
+      if (imageFiles && imageFiles.length > 0) {
         const formData = new FormData();
         for (let i = 0; i < imageFiles.length; i++) {
           formData.append("files", imageFiles[i]);
         }
-        formData.append("parentObjectId", createdId);
+        formData.append("parentObjectId", id);
 
         try {
           const uploadResp = await fetch('/api/images/upload-multiple', {
@@ -306,23 +334,19 @@ export default function NovoPontoPage() {
           if (!uploadResp.ok) {
             const text = await uploadResp.text().catch(() => "");
             console.error("Erro ao enviar imagens:", text || uploadResp.status);
-            setErroSave("Ponto criado, mas ocorreu um erro ao enviar as imagens.");
+            setErroSave("Ponto atualizado, mas ocorreu um erro ao enviar as imagens.");
           }
         } catch (err) {
           console.error("Falha na requisição de upload de imagens:", err);
-          setErroSave("Ponto criado, mas ocorreu um erro ao enviar as imagens.");
+          setErroSave("Ponto atualizado, mas ocorreu um erro ao enviar as imagens.");
         }
       }
 
-      // Redireciona
-      if (createdId) {
-        router.push(`/pontos/${createdId}`);
-      } else {
-        router.push("/pontos");
-      }
+      // Redireciona para a página de detalhes
+      router.push(`/pontos/${id}`);
     } catch (e: any) {
       console.error(e);
-      setErroSave(e.message || "Erro ao salvar ponto de interesse");
+      setErroSave(e.message || "Erro ao atualizar ponto de interesse");
     } finally {
       setSaving(false);
     }
@@ -352,18 +376,26 @@ export default function NovoPontoPage() {
   const mapCenter: [number, number] =
     latNum !== null && lonNum !== null ? [latNum, lonNum] : defaultCenter;
 
+  if (loadingInit) {
+    return (
+      <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-50 flex items-center justify-center">
+        <p className="text-sm text-zinc-200">Carregando dados do ponto...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-zinc-950 px-4 py-6 text-zinc-50">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <header className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-400">
-            Uncovering History · Cadastro Completo
+            Uncovering History · Edição
           </p>
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            Cadastrar novo ponto de interesse
+            Editar ponto de interesse
           </h1>
           <p className="text-xs text-zinc-400">
-            Preencha todos os campos disponíveis para documentar completamente o ponto histórico
+            Atualize as informações do ponto histórico
           </p>
         </header>
 
@@ -377,7 +409,7 @@ export default function NovoPontoPage() {
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
           <div className="flex items-center justify-between px-4 py-2 text-[11px] text-zinc-400">
             <span>Mapa de localização do ponto</span>
-            <span>Clique no mapa para posicionar • Arraste o marcador para ajustar</span>
+            <span>Clique no mapa para reposicionar • Arraste o marcador para ajustar</span>
           </div>
           <div className="h-[320px] w-full">
             <MapContainer
@@ -533,16 +565,11 @@ export default function NovoPontoPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-200">
-                  País {autoCountryLoading && <span className="text-[10px]">(detectando...)</span>}
-                </label>
+                <label className="text-xs font-medium text-zinc-200">País</label>
                 <input
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-emerald-400"
                   value={country}
-                  onChange={(e) => {
-                    setCountry(e.target.value);
-                    setCountryTouched(true);
-                  }}
+                  onChange={(e) => setCountry(e.target.value)}
                   placeholder="Ex: Brasil, Uruguay..."
                 />
               </div>
@@ -596,7 +623,7 @@ export default function NovoPontoPage() {
               Categorias e Classificações
             </h2>
             <p className="text-xs text-zinc-400">
-              Selecione as categorias que se aplicam a este ponto (deixe em branco se não aplicável)
+              Selecione as categorias que se aplicam a este ponto
             </p>
 
             {/* Status */}
@@ -608,11 +635,10 @@ export default function NovoPontoPage() {
                     key={item}
                     type="button"
                     onClick={() => toggleArrayValue(status, item, setStatus)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      status.includes(item)
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${status.includes(item)
                         ? 'bg-emerald-500 text-black'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -629,11 +655,10 @@ export default function NovoPontoPage() {
                     key={item}
                     type="button"
                     onClick={() => toggleArrayValue(historica, item, setHistorica)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      historica.includes(item)
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${historica.includes(item)
                         ? 'bg-sky-500 text-black'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -650,11 +675,10 @@ export default function NovoPontoPage() {
                     key={item}
                     type="button"
                     onClick={() => toggleArrayValue(arte, item, setArte)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      arte.includes(item)
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${arte.includes(item)
                         ? 'bg-purple-500 text-black'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -671,11 +695,10 @@ export default function NovoPontoPage() {
                     key={item}
                     type="button"
                     onClick={() => toggleArrayValue(biologica, item, setBiologica)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      biologica.includes(item)
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${biologica.includes(item)
                         ? 'bg-green-500 text-black'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -692,11 +715,10 @@ export default function NovoPontoPage() {
                     key={item}
                     type="button"
                     onClick={() => toggleArrayValue(quimica, item, setQuimica)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                      quimica.includes(item)
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${quimica.includes(item)
                         ? 'bg-orange-500 text-black'
                         : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                    }`}
+                      }`}
                   >
                     {item}
                   </button>
@@ -758,15 +780,15 @@ export default function NovoPontoPage() {
             )}
           </div>
 
-          {/* Seção: Imagens */}
+          {/* Seção: Adicionar Novas Imagens */}
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide">
-              Imagens
+              Adicionar Novas Imagens
             </h2>
 
             <div className="space-y-1">
               <label className="text-xs font-medium text-zinc-200">
-                Selecionar imagens
+                Selecionar novas imagens
               </label>
               <input
                 type="file"
@@ -776,7 +798,7 @@ export default function NovoPontoPage() {
                 onChange={(e) => setImageFiles(e.target.files)}
               />
               <p className="text-[11px] text-zinc-500">
-                Formatos aceitos: JPEG, PNG, GIF, WebP. As imagens serão associadas ao ponto após criação.
+                Formatos aceitos: JPEG, PNG, GIF, WebP. As novas imagens serão adicionadas ao ponto.
               </p>
             </div>
           </div>
@@ -794,13 +816,13 @@ export default function NovoPontoPage() {
               disabled={saving}
               className="inline-flex items-center justify-center rounded-full border border-emerald-400 bg-emerald-500 px-6 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-emerald-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? "💾 Salvando..." : "✓ Salvar ponto completo"}
+              {saving ? "💾 Salvando..." : "✓ Salvar alterações"}
             </button>
 
             <button
               type="button"
               className="inline-flex items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 px-6 py-2 text-sm font-medium text-zinc-100 hover:border-zinc-500"
-              onClick={() => router.push("/pontos")}
+              onClick={() => router.push(`/pontos/${id}`)}
             >
               Cancelar
             </button>

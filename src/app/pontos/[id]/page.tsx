@@ -198,12 +198,20 @@ export default function InterestPointDetailsPage({ params }: PageProps) {
             )}
           </div>
 
-          <Link
-            href="/pontos"
-            className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-1.5 text-xs font-medium text-zinc-100 hover:border-zinc-500"
-          >
-            ← Voltar para lista
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href={`/pontos/${id}/editar`}
+              className="rounded-full border border-emerald-600 bg-emerald-600 px-4 py-1.5 text-xs font-medium text-black hover:bg-emerald-500"
+            >
+              ✏️ Editar
+            </Link>
+            <Link
+              href="/pontos"
+              className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-1.5 text-xs font-medium text-zinc-100 hover:border-zinc-500"
+            >
+              ← Voltar
+            </Link>
+          </div>
         </div>
       </header>
 

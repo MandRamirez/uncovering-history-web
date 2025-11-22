@@ -1,12 +1,14 @@
-// src/app/api/interest-points/parent/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+  
   if (!API_BASE) {
     return NextResponse.json(
       { error: 'API URL not configured' },
@@ -15,14 +17,22 @@ export async function GET(
   }
 
   try {
-    const params = await context.params;
-    const { id } = params;
-    const response = await fetch(`${API_BASE}/api/interest-points/parent/${id}/with-depth`);
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (API_TOKEN) {
+      headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    }
+
+    const response = await fetch(`${API_BASE}/api/interest-points/parent/${id}`, {
+      headers,
+    });
 
     if (!response.ok) {
-      const text = await response.text();
+      const errorText = await response.text();
       return NextResponse.json(
-        { error: text || `HTTP ${response.status}` },
+        { error: errorText || 'Failed to fetch children' },
         { status: response.status }
       );
     }
@@ -32,7 +42,7 @@ export async function GET(
   } catch (error: any) {
     console.error('Proxy error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch from backend' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }

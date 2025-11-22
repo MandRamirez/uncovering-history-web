@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
 
 export async function GET() {
   if (!API_BASE) {
@@ -15,6 +16,10 @@ export async function GET() {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
+
+    if (API_TOKEN) {
+      headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    }
 
     const response = await fetch(`${API_BASE}/api/interest-points`, {
       headers,
@@ -53,6 +58,10 @@ export async function POST(request: Request) {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
+
+    if (API_TOKEN) {
+      headers['Authorization'] = `Bearer ${API_TOKEN}`;
+    }
 
     const response = await fetch(`${API_BASE}/api/interest-points`, {
       method: 'POST',

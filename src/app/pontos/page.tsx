@@ -22,7 +22,9 @@ type InterestPointApi = {
   lon: number | string;
   address?: string | null;
   neighborhood?: string | null;
+  country?: string | null;
   type?: Tipo;
+  photoIds?: string[];
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
@@ -35,6 +37,7 @@ export default function PontosPage() {
   const [search, setSearch] = useState("");
   const [typeId, setTypeId] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
+  const [country, setCountry] = useState("");
 
   useEffect(() => {
     async function carregar() {
@@ -58,10 +61,16 @@ export default function PontosPage() {
               return null;
             }
 
+            // Transform photoIds to photoUrls
+            const photoUrls = p.photoIds?.map(
+              (photoId) => `/api/files/${photoId}`
+            ) || [];
+
             return {
               ...p,
               lat,
               lon,
+              photoUrls,
             };
           })
           .filter((p): p is CardPoint => p !== null);
@@ -100,6 +109,17 @@ export default function PontosPage() {
     return Array.from(set.values()).sort();
   }, [data]);
 
+  // lista de países únicos
+  const paises = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((p) => {
+      if (p.country) {
+        set.add(p.country);
+      }
+    });
+    return Array.from(set.values()).sort();
+  }, [data]);
+
   // aplica filtros
   const filtrados = useMemo(() => {
     return data.filter((p) => {
@@ -115,9 +135,12 @@ export default function PontosPage() {
       if (neighborhood && p.neighborhood !== neighborhood) {
         return false;
       }
+      if (country && p.country !== country) {
+        return false;
+      }
       return true;
     });
-  }, [data, search, typeId, neighborhood]);
+  }, [data, search, typeId, neighborhood, country]);
 
   if (loading) {
     return (
@@ -153,12 +176,15 @@ export default function PontosPage() {
         <PIFilterBar
           types={tipos}
           neighborhoods={bairros}
+          countries={paises}
           search={search}
           typeId={typeId}
           neighborhood={neighborhood}
+          country={country}
           onSearchChange={setSearch}
           onTypeChange={setTypeId}
           onNeighborhoodChange={setNeighborhood}
+          onCountryChange={setCountry}
         />
 
         <section className="grid gap-3 md:grid-cols-2">

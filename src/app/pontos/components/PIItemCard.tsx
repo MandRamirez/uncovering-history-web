@@ -23,6 +23,7 @@ export type InterestPoint = {
   lon: number;
   address?: string | null;
   neighborhood?: string | null;
+  country?: string | null;
   type?: Tipo;
   photoUrls?: string[];
 };

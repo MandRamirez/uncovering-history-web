@@ -7,14 +7,14 @@
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
     // En el cliente, las variables de entorno están embebidas en el bundle
-    return process.env.NEXT_PUBLIC_API_URL || 'http://100.125.234.124:8082';
+    return process.env.API_URL || 'http://100.125.234.124:8082';
   }
   return 'http://100.125.234.124:8082';
 };
 
 const getToken = () => {
   if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_API_TOKEN || '';
+    return process.env.API_TOKEN || '';
   }
   return '';
 };

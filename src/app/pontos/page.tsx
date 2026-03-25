@@ -27,7 +27,7 @@ type InterestPointApi = {
   photoIds?: string[];
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = process.env.API_URL;
 
 export default function PontosPage() {
   const [data, setData] = useState<CardPoint[]>([]);

@@ -7,7 +7,7 @@ import Gallery from "../components/Gallery";
 import SubPointList, { SubPoint } from "../components/SubPointList";
 import MiniMapCard from "../components/MiniMapCard";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = process.env.API_URL;
 
 type Tipo = {
   id: string;

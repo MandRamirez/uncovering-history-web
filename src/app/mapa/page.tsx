@@ -42,7 +42,7 @@ type InterestPoint = {
   photoUrls?: string[];
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = process.env.API_URL;
 
 export default function MapaPage() {
   const [pontos, setPontos] = useState<InterestPoint[]>([]);

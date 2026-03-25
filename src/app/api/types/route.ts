@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 
 // IMPORTANTE: En API Routes (server-side), las variables NEXT_PUBLIC_* 
 // SÍ están disponibles, pero también podemos usar variables sin el prefijo
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
+const API_BASE = process.env.API_URL;
+const API_TOKEN = process.env.API_TOKEN;
 
 export async function GET() {
   // Debug logs para ver qué está pasando

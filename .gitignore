@@ -6,13 +6,37 @@ node_modules/
 out/
 dist/
 
-# env
+# env — never commit secrets
 .env
 .env.local
 .env.*.local
+.env.production
+
+# Windows dev scripts — contain hardcoded IPs, credentials and tokens
+*.bat
+temp_response.json
+
+# Database / admin scripts — contain credentials and internal IPs
+make-user-admin.sql
+PASTE_THIS.txt
+populate-points.js
+populate-direct.js
+
+# Archives
+*.zip
+
+# Dev documentation with internal infrastructure details
+CHECKLIST_RAPIDO.md
+CORS_FIX_SUMMARY.md
+DIAGNOSTICO_PROXIES.md
+IMPLEMENTACION_COMPLETA.md
+REFACTOR_DIRECT_BACKEND.md
+SOLUCION_TOKEN_INVALIDO.md
 
 # misc
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log
+.DS_Store
+Thumbs.db
